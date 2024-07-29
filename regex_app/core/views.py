@@ -19,22 +19,16 @@ else:
 def process_file(request):
     if request.method == 'POST':
         try:
-            print("Request method:", request.method)
-            print("Files:", request.FILES)
-
             uploaded_file = request.FILES.get('file')
             if not uploaded_file:
                 return JsonResponse({'error': 'No file uploaded'}, status=400)
 
-            print("Uploaded file name:", uploaded_file.name)
-            print("Uploaded file size:", uploaded_file.size)
-
             df = pd.read_excel(uploaded_file)
-            print("Data frame shape:", df.shape)
-            print("Data frame columns:", df.columns)
-
+            df = df.head(5)
             data = df.to_dict(orient='records')
-            return JsonResponse({'data': data}, safe=False, status=200)
+            headers = list(df.columns)  # Extract headers
+
+            return JsonResponse({'data': data, 'headers': headers}, safe=False, status=200)
         except Exception as e:
             print("Error occurred:", e)
             return JsonResponse({'error': str(e)}, status=400)
@@ -56,8 +50,30 @@ def llm_process(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
+@csrf_exempt
+def identify_modifications(request):
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            user_text = body.get('text', '')
+            headers = body.get('headers', [])
+            if not user_text or not headers:
+                return JsonResponse({'error': 'Text and headers must be provided'}, status=400)
+
+            prompt = f"Based on the following description: {user_text}, identify which header in the following list should be modified and give me only the header: {headers}"
+            response = call_openai_api(prompt)
+            if response:
+                modification_info = extract_modification_info(response)
+                return JsonResponse({'modification_info': modification_info}, status=200)
+            else:
+                return JsonResponse({'error': 'No response from API'}, status=400)
+        except Exception as e:
+            print("Error occurred:", e)
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
 def generate_regex_from_description(description):
-    prompt = f"Generate only the regular expression to match the following description without any explanation: {description}"
+    prompt = f"Provide only the regular expression to solve the following problem description, without any explanation: {description}"
     try:
         response = call_openai_api(prompt)
         if response:
@@ -76,11 +92,19 @@ def extract_regex_from_response(response):
         start = content.find('```') + 3
         end = content.find('```', start)
         if start != -1 and end != -1:
-            return content[start:end].strip()
+            return content[start:end].replace("regex","").strip()
         return "No regex pattern found in the response"
     except (AttributeError, IndexError) as e:
         print(f"An error occurred during extraction: {e}")
         return "Error extracting regex pattern"
+
+def extract_modification_info(response):
+    try:
+        content = response.choices[0].message.content.strip()
+        return content  # Assuming the response content contains the required modification info
+    except (AttributeError, IndexError) as e:
+        print(f"An error occurred during extraction: {e}")
+        return "Error extracting modification info"
 
 def call_openai_api(prompt, retries=3):
     for i in range(retries):

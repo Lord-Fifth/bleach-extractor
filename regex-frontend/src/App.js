@@ -1,15 +1,16 @@
-// src/App.js
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Container, Typography, Button, CircularProgress, CssBaseline, TextField } from '@mui/material';
-import DataTable from './components/DataTable'; // Import the DataTable component
+import DataTable from './components/DataTable';
 
 function App() {
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
+  const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [userInput, setUserInput] = useState('');  // New state for user input
-  const [llmResponse, setLlmResponse] = useState('');  // State to store LLM response
+  const [userInput, setUserInput] = useState('');
+  const [llmResponse, setLlmResponse] = useState('');
+  const [headerModificationInfo, setHeaderModificationInfo] = useState('');
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -28,6 +29,7 @@ function App() {
     axios.post('http://localhost:8000/process/', formData)
       .then(response => {
         setData(response.data.data);
+        setHeaders(response.data.headers); // Store headers for further processing
         setLoading(false);
       })
       .catch(error => {
@@ -40,21 +42,31 @@ function App() {
     setUserInput(e.target.value);
   };
 
-  const handleTextSubmit = () => {
-    if (userInput.trim() === '') {
-      alert("Please enter some text.");
+  const handleTextAndProcess = () => {
+    if (userInput.trim() === '' || headers.length === 0) {
+      alert("Please upload a file and enter some text.");
       return;
     }
 
     setLoading(true);
 
+    // Call to get the regex
     axios.post('http://localhost:8000/llm-process/', { text: userInput })
       .then(response => {
         setLlmResponse(response.data.response);
-        setLoading(false);
       })
       .catch(error => {
         console.error('There was an error processing the text!', error);
+      });
+
+    // Call to get the header modification information
+    axios.post('http://localhost:8000/identify-modifications/', { text: userInput, headers })
+      .then(response => {
+        setHeaderModificationInfo(response.data.modification_info);
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error('There was an error processing the request!', error);
         setLoading(false);
       });
   };
@@ -78,39 +90,54 @@ function App() {
             Choose File
           </Button>
         </label>
-        {file && <Typography variant="body1" sx={{ margin: 1 }}>{file.name}</Typography>}
-        <Button
-          variant="contained"
-          color="secondary"
-          onClick={handleFileUpload}
-          disabled={loading}
-          sx={{ margin: 2 }}
-        >
-          {loading ? <CircularProgress size={24} /> : "Upload"}
-        </Button>
+        {file && (
+          <>
+            <Typography variant="body1" sx={{ margin: 1 }}>{file.name}</Typography>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleFileUpload}
+              disabled={loading}
+              sx={{ margin: 2 }}
+            >
+              {loading ? <CircularProgress size={24} /> : "Upload"}
+            </Button>
+          </>
+        )}
 
         {data.length > 0 && <DataTable data={data} />}
 
-        <TextField
-          label="Enter text for LLM processing"
-          value={userInput}
-          onChange={handleTextInputChange}
-          variant="outlined"
-          fullWidth
-          sx={{ margin: 2 }}
-        />
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleTextSubmit}
-          disabled={loading}
-          sx={{ margin: 2 }}
-        >
-          {loading ? <CircularProgress size={24} /> : "Submit Text and Process"}
-        </Button>
+        {data.length > 0 && (
+          <>
+            <TextField
+              label="Enter text for LLM processing"
+              value={userInput}
+              onChange={handleTextInputChange}
+              variant="outlined"
+              fullWidth
+              sx={{ margin: 2 }}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleTextAndProcess}
+              disabled={loading}
+              sx={{ margin: 2 }}
+            >
+              {loading ? <CircularProgress size={24} /> : "Submit Text and Process"}
+            </Button>
+          </>
+        )}
+
         {llmResponse && (
           <Typography variant="body1" sx={{ margin: 2 }}>
-            LLM Response: {llmResponse}
+            LLM Response (Regex): {llmResponse}
+          </Typography>
+        )}
+
+        {headerModificationInfo && (
+          <Typography variant="body1" sx={{ margin: 2 }}>
+            Header Modification Info: {headerModificationInfo}
           </Typography>
         )}
       </Container>
