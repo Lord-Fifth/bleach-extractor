@@ -60,7 +60,7 @@ def identify_modifications(request):
             if not user_text or not headers:
                 return JsonResponse({'error': 'Text and headers must be provided'}, status=400)
 
-            prompt = f"Based on the following description: {user_text}, identify which header in the following list should be modified and give me only the header: {headers}"
+            prompt = f"Based on the following description: {user_text}, identify which header in the following list should be modified and give me only the header name and nothing else: {headers}"
             response = call_openai_api(prompt)
             if response:
                 modification_info = extract_modification_info(response)
@@ -73,7 +73,7 @@ def identify_modifications(request):
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 def generate_regex_from_description(description):
-    prompt = f"Provide only the regular expression to solve the following problem description, without any explanation: {description}"
+    prompt = f"Provide only the regular expression to solve the following problem description, without any explanation. Also do not include any lookbehind assertion, just the regex pattern: {description}"
     try:
         response = call_openai_api(prompt)
         if response:
@@ -87,13 +87,15 @@ def generate_regex_from_description(description):
 
 def extract_regex_from_response(response):
     try:
-        # Access the content using attribute access
         content = response.choices[0].message.content.strip()
-        start = content.find('```') + 3
-        end = content.find('```', start)
-        if start != -1 and end != -1:
-            return content[start:end].replace("regex","").strip()
-        return "No regex pattern found in the response"
+        # Check if the response contains triple backticks
+        if '```' in content:
+            start = content.find('```') + 3
+            end = content.find('```', start)
+            if start != -1 and end != -1:
+                return content[start:end].replace("regex", "").strip()
+        # If no triple backticks, return the full content
+        return content.replace("regex", "").strip()
     except (AttributeError, IndexError) as e:
         print(f"An error occurred during extraction: {e}")
         return "Error extracting regex pattern"
@@ -105,6 +107,39 @@ def extract_modification_info(response):
     except (AttributeError, IndexError) as e:
         print(f"An error occurred during extraction: {e}")
         return "Error extracting modification info"
+    
+@csrf_exempt
+def replace_pattern(request):
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            regex_pattern = body.get('regex', '')
+            column = body.get('column', '')
+            replacement_value = body.get('replacement', 'REDACTED')  # Use provided replacement or default to 'REDACTED'
+
+            print("Received regex:", regex_pattern)
+            print("Received column:", column)
+            print("Replacement value:", replacement_value)
+
+            if not regex_pattern or not column:
+                return JsonResponse({'error': 'Regex pattern and column name must be provided'}, status=400)
+            
+            data = body.get('data', [])
+            if not data:
+                return JsonResponse({'error': 'Data must be provided'}, status=400)
+            
+            df = pd.DataFrame(data)
+
+            df[column] = df[column].astype(str).replace(regex_pattern, replacement_value, regex=True)
+            
+            modified_data = df.to_dict(orient='records')
+            
+            return JsonResponse({'data': modified_data}, status=200)
+        except Exception as e:
+            print("Error occurred:", e)
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+    
 
 def call_openai_api(prompt, retries=3):
     for i in range(retries):

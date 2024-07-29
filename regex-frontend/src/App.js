@@ -11,6 +11,7 @@ function App() {
   const [userInput, setUserInput] = useState('');
   const [llmResponse, setLlmResponse] = useState('');
   const [headerModificationInfo, setHeaderModificationInfo] = useState('');
+  const [modifiedData, setModifiedData] = useState([]);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -29,7 +30,7 @@ function App() {
     axios.post('http://localhost:8000/process/', formData)
       .then(response => {
         setData(response.data.data);
-        setHeaders(response.data.headers); // Store headers for further processing
+        setHeaders(response.data.headers);
         setLoading(false);
       })
       .catch(error => {
@@ -47,22 +48,41 @@ function App() {
       alert("Please upload a file and enter some text.");
       return;
     }
-
+  
     setLoading(true);
-
-    // Call to get the regex
+  
+    let regexPattern = '';
+    let column = '';
+    let replacementValue = 'REDACTED';  // Default replacement value
+  
     axios.post('http://localhost:8000/llm-process/', { text: userInput })
       .then(response => {
-        setLlmResponse(response.data.response);
+        regexPattern = response.data.response;
+        setLlmResponse(regexPattern);  // For display purposes, if needed
+        return axios.post('http://localhost:8000/identify-modifications/', { text: userInput, headers });
       })
-      .catch(error => {
-        console.error('There was an error processing the text!', error);
-      });
-
-    // Call to get the header modification information
-    axios.post('http://localhost:8000/identify-modifications/', { text: userInput, headers })
       .then(response => {
-        setHeaderModificationInfo(response.data.modification_info);
+        column = response.data.modification_info;
+        setHeaderModificationInfo(column);  // For display purposes, if needed
+  
+        // Check if the user input contains the word "replace"
+        if (userInput.toLowerCase().includes("replace")) {
+          // Extract replacement value from the userInput if specified
+          const replacementMatch = userInput.match(/'(.+?)'/);
+          if (replacementMatch && replacementMatch[1]) {
+            replacementValue = replacementMatch[1];
+          }
+        }
+  
+        return axios.post('http://localhost:8000/replace-pattern/', {
+          regex: regexPattern,
+          column: column,
+          data: data,
+          replacement: replacementValue
+        });
+      })
+      .then(response => {
+        setModifiedData(response.data.data);
         setLoading(false);
       })
       .catch(error => {
@@ -70,6 +90,7 @@ function App() {
         setLoading(false);
       });
   };
+
 
   return (
     <>
@@ -128,18 +149,17 @@ function App() {
             </Button>
           </>
         )}
-
-        {llmResponse && (
+        {/* {llmResponse && (
           <Typography variant="body1" sx={{ margin: 2 }}>
             LLM Response (Regex): {llmResponse}
           </Typography>
         )}
-
         {headerModificationInfo && (
           <Typography variant="body1" sx={{ margin: 2 }}>
             Header Modification Info: {headerModificationInfo}
           </Typography>
-        )}
+        )} */}
+        {modifiedData.length > 0 && <DataTable data={modifiedData} />}
       </Container>
     </>
   );
