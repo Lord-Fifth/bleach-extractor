@@ -9,8 +9,8 @@ function App() {
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
-  const [llmResponse, setLlmResponse] = useState('');
-  const [headerModificationInfo, setHeaderModificationInfo] = useState('');
+  // const [llmResponse, setLlmResponse] = useState('');
+  // const [headerModificationInfo, setHeaderModificationInfo] = useState('');
   const [modifiedData, setModifiedData] = useState([]);
 
   const handleFileChange = (e) => {
@@ -58,12 +58,12 @@ function App() {
     axios.post('http://localhost:8000/llm-process/', { text: userInput })
       .then(response => {
         regexPattern = response.data.response;
-        setLlmResponse(regexPattern);  // For display purposes, if needed
+        // setLlmResponse(regexPattern);  // For display purposes, if needed
         return axios.post('http://localhost:8000/identify-modifications/', { text: userInput, headers });
       })
       .then(response => {
         column = response.data.modification_info;
-        setHeaderModificationInfo(column);  // For display purposes, if needed
+        // setHeaderModificationInfo(column);  // For display purposes, if needed
   
         // Check if the user input contains the word "replace"
         if (userInput.toLowerCase().includes("replace")) {
